@@ -1,0 +1,11 @@
+#!/bin/sh
+# ffmpeg-hw: runs Termux's ffmpeg, which can use Android's MediaCodec hardware encoders
+# (h264_mediacodec, hevc_mediacodec), from inside a proot-distro container.
+# Termux's lib folder on LD_LIBRARY_PATH makes those encoders abort with
+# "gralloc-mapper is missing", so the variable is removed.
+TERMUX_FFMPEG="${TERMUX_FFMPEG:-/data/data/com.termux/files/usr/bin/ffmpeg}"
+if [ ! -x "$TERMUX_FFMPEG" ]; then
+  echo "ffmpeg-hw: $TERMUX_FFMPEG not found. In Termux (outside proot) run: pkg install ffmpeg" >&2
+  exit 1
+fi
+exec env -u LD_LIBRARY_PATH "$TERMUX_FFMPEG" "$@"
