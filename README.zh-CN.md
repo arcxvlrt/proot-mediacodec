@@ -2,58 +2,61 @@
 
 [English](README.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | **简体中文**
 
-在 [Termux](https://termux.dev) 的 [proot-distro](https://github.com/termux/proot-distro) 中运行的 Linux 发行版里，使用 Android 设备的硬件视频编码器（MediaCodec：`h264_mediacodec`、`hevc_mediacodec`）。无需 root，也无需自行编译：只要在容器里调用 Termux 软件源自带的 `ffmpeg` 软件包。
+> 本译文借助了机器翻译。如有不通顺的地方，欢迎提 PR 修正。
 
-## 快速开始
+在 [proot-distro](https://github.com/termux/proot-distro) 里使用 Android 的硬件视频编码器（`h264_mediacodec`、`hevc_mediacodec`）。直接用 Termux 自带的 `ffmpeg`，不需要 root，也不需要自己编译。
 
-1. 在 Termux 中（proot 之外）：
-   ```sh
-   pkg install ffmpeg
-   ffmpeg -hide_banner -encoders | grep mediacodec   # h264_mediacodec, hevc_mediacodec, ...
-   ```
-2. 在 proot-distro 中用完整路径运行 Termux 的 ffmpeg，或者把 `ffmpeg-hw` 放进 PATH：
-   ```sh
-   ./ffmpeg-hw -i input.mp4 -c:v h264_mediacodec -b:v 8M -pix_fmt yuv420p output.mp4
-   ```
-3. 不要让 `LD_LIBRARY_PATH` 指向 Termux 的 `lib` 目录。设置了 `LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib` 时，硬件编码器会报下面的错误并退出：
-   ```
-   gralloc-mapper is missing
-   ```
-   在普通 Termux 中也一样。有些教程为了在 proot 中运行 Termux 程序而设置这个变量，其实并不需要：Termux 的程序通过内置的 RUNPATH 找到自己的库。`ffmpeg-hw` 会在启动 ffmpeg 之前删除这个变量。
+我在 Galaxy Tab 的 proot-distro Debian 里渲染 YouTube Shorts 时碰到了这个问题。Debian 的 ffmpeg 完全不支持 MediaCodec，而在容器里调用 Termux 的 ffmpeg 又总是报 `gralloc-mapper is missing` 退出。最后发现原因只是一个环境变量。
 
-## 原理
+## 用法
 
-Debian 的 ffmpeg 是为 glibc Linux 编译的，不支持 MediaCodec。Termux 的 ffmpeg 是为 Android 编译的，启用了 MediaCodec。proot-distro 在容器内仍然能看到 Termux 的前缀目录和 Android 系统目录（`/system`、`/vendor`、`/apex`、`/linkerconfig`），容器里的进程也仍然以 Termux 应用的身份运行，所以这个 ffmpeg 能像在 Termux 中一样访问厂商的编解码库和媒体服务。
-
-当 `LD_LIBRARY_PATH` 中有 Termux 的 `lib` 目录时，厂商的图形缓冲区映射器（gralloc）会加载失败，推测是它依赖的库被解析到了 Termux 的副本。随后 Android 的 libui 输出上面的信息并终止程序。[termux-x11 #960](https://github.com/termux/termux-x11/issues/960) 中也出现了同样的信息。
-
-## 基准测试
-
-`bench.sh` 把 1080x1920 的测试画面编码 300 帧。测试画面同样由 CPU 绘制，所以每一行都包含这部分工作。
-
-| 编码器 | proot-distro Debian 内 | Termux |
-|---|---|---|
-| `h264_mediacodec`（硬件） | 59.2 fps，CPU 5.3 秒 | 84.7 fps，CPU 4.7 秒 |
-| `hevc_mediacodec`（硬件） | 57.7 fps，CPU 5.2 秒 | 92.4 fps，CPU 3.8 秒 |
-| `libx264 -preset veryfast` | 39.7 fps，CPU 19.2 秒 | 56.0 fps，CPU 15.2 秒 |
-| `libx264 -preset medium` | 33.0 fps，CPU 32.9 秒 | 35.3 fps，CPU 31.2 秒 |
-| `LD_LIBRARY_PATH` 指向 Termux lib 时的 `h264_mediacodec` | gralloc-mapper is missing | gralloc-mapper is missing |
-
-硬件编码器更快，而且几乎不占用 CPU（CPU 时间只有 x264 veryfast 的四到六分之一），可以把 CPU 留给绘制画面的程序。proot 会跟踪系统调用，所以容器内整体会慢一些。
-
-测试设备：三星 Galaxy Tab S9 FE+（Exynos 1380），Android 16 / One UI 8.5，Termux 0.118.3（F-Droid），Termux 的 ffmpeg 9.0.2，proot-distro Debian 13。其他设备尚未测试，欢迎在 issue 中分享其他手机和平板的结果。
+在 Termux 中：
 
 ```sh
-./bench.sh       # 在 proot-distro 中
-bash bench.sh    # 在 Termux 中
+pkg install ffmpeg
 ```
 
-## 提示
+在 proot 里用完整路径运行 Termux 的 ffmpeg，或者用本仓库的 `ffmpeg-hw`：
 
-- MediaCodec 编码器用码率（`-b:v 8M`）控制画质，不支持 `-crf`。
-- 输入 `-pix_fmt yuv420p`（或 `nv12`）。
-- 保留 CPU 备用方案：硬件编码器失败时，用 `libx264 -preset veryfast` 重新编码。
-- 编码往往不是最慢的环节。在产生这个方法的短视频流程中，用 Python（MoviePy）绘制画面每秒只有约 2 帧。把合成改为一个 ffmpeg 滤镜图（`scale` 的 `eval=frame`、`overlay`、`xfade`）并用 `h264_mediacodec` 编码后，30 秒视频的渲染从约 7 分钟缩短到 30～80 秒。
+```sh
+./ffmpeg-hw -i in.mp4 -c:v h264_mediacodec -b:v 8M -pix_fmt yuv420p out.mp4
+```
+
+只要 `LD_LIBRARY_PATH` 没有指向 Termux 的 `lib` 目录，就这么简单。
+
+## `gralloc-mapper is missing`
+
+设置了 `LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib` 时，硬件编码器会输出这条信息并退出，在 proot 里和普通 Termux 里都一样。有些安装教程为了让 Termux 程序能在 proot 里运行而加上这个路径，其实没必要：Termux 的程序会通过自己的 RUNPATH 找到库。`ffmpeg-hw` 只是去掉这个变量，再运行 Termux 的 ffmpeg。
+
+我猜这时厂商的 gralloc mapper 把依赖库解析到了 Termux 的副本上，于是加载失败。[termux-x11 #960](https://github.com/termux/termux-x11/issues/960) 里也是同样的信息。
+
+## 数据
+
+`bench.sh` 把 1080x1920 的测试画面编码 300 帧。测试画面本身也由 CPU 绘制，所以每一行都包含这部分开销。
+
+| 编码器 | proot 内（Debian） | Termux |
+|---|---|---|
+| `h264_mediacodec` | 59.2 fps，CPU 5.3 秒 | 84.7 fps，CPU 4.7 秒 |
+| `hevc_mediacodec` | 57.7 fps，CPU 5.2 秒 | 92.4 fps，CPU 3.8 秒 |
+| `libx264 -preset veryfast` | 39.7 fps，CPU 19.2 秒 | 56.0 fps，CPU 15.2 秒 |
+| `libx264 -preset medium` | 33.0 fps，CPU 32.9 秒 | 35.3 fps，CPU 31.2 秒 |
+| `h264_mediacodec`，`LD_LIBRARY_PATH` = Termux lib | gralloc-mapper is missing | gralloc-mapper is missing |
+
+Galaxy Tab S9 FE+（Exynos 1380），Android 16，F-Droid 版 Termux 0.118.3，ffmpeg 9.0.2，Debian 13。我手上只有这一台设备，欢迎在 issue 里分享其他手机的数据。
+
+硬件编码器占用的 CPU 时间大约是 x264 veryfast 的四分之一到三分之一（medium 的六分之一）。当另有程序在绘制画面时，这一点比 fps 更重要。proot 会跟踪系统调用，所以在 proot 里一切都会慢一些。
+
+```sh
+./bench.sh       # 在 proot 里
+bash bench.sh    # 在 Termux 里
+```
+
+## 备注
+
+- MediaCodec 用码率（`-b:v`），不支持 `-crf`。
+- 输入用 `yuv420p` 或 `nv12`。
+- 留着 `libx264 -preset veryfast` 作为备用，以防没有硬件编码器。
+- 对我来说，编码其实并不是最慢的环节：MoviePy 每秒只能画大约 2 帧。把合成改成一个 ffmpeg 滤镜图并用 `h264_mediacodec` 编码后，30 秒的视频从大约 7 分钟缩短到 30～80 秒。
 
 在 Python 中：
 

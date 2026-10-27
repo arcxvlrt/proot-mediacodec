@@ -2,58 +2,59 @@
 
 [English](README.md) | **한국어** | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
 
-[Termux](https://termux.dev)에서 [proot-distro](https://github.com/termux/proot-distro)로 띄운 리눅스 배포판 안에서 안드로이드 기기의 하드웨어 영상 인코더(MediaCodec: `h264_mediacodec`, `hevc_mediacodec`)를 쓰는 방법이에요. 루팅도 빌드도 필요 없어요. Termux 저장소의 기본 `ffmpeg` 패키지를 컨테이너 안에서 불러서 쓰면 돼요.
+[proot-distro](https://github.com/termux/proot-distro) 안에서 안드로이드 하드웨어 영상 인코더(`h264_mediacodec`, `hevc_mediacodec`)를 쓰는 방법입니다. Termux 기본 `ffmpeg` 그대로 쓰고, 루팅이나 따로 빌드할 것은 없습니다.
 
-## 빠른 시작
+갤럭시 탭의 proot-distro Debian에서 유튜브 쇼츠를 렌더링하다가 만난 문제입니다. Debian의 ffmpeg는 MediaCodec을 아예 지원하지 않고, 컨테이너 안에서 Termux의 ffmpeg를 부르면 `gralloc-mapper is missing`을 내며 계속 죽었습니다. 원인은 환경 변수 하나였습니다.
 
-1. Termux에서 (proot 밖):
-   ```sh
-   pkg install ffmpeg
-   ffmpeg -hide_banner -encoders | grep mediacodec   # h264_mediacodec, hevc_mediacodec, ...
-   ```
-2. proot-distro 안에서 Termux의 ffmpeg를 전체 경로로 실행하거나, `ffmpeg-hw`를 PATH에 넣어서 써요:
-   ```sh
-   ./ffmpeg-hw -i input.mp4 -c:v h264_mediacodec -b:v 8M -pix_fmt yuv420p output.mp4
-   ```
-3. `LD_LIBRARY_PATH`에 Termux의 `lib` 폴더를 넣지 마세요. `LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib`이면 하드웨어 인코더가 이 오류를 내며 꺼져요.
-   ```
-   gralloc-mapper is missing
-   ```
-   그냥 Termux에서도 똑같아요. proot 안에서 Termux 프로그램을 돌리려고 이 변수를 설정하라는 안내도 있지만 필요 없어요. Termux 실행 파일은 안에 들어 있는 RUNPATH로 자기 라이브러리를 찾아요. `ffmpeg-hw`는 ffmpeg를 실행하기 전에 이 변수를 지워요.
+## 사용법
 
-## 왜 되는가
-
-Debian의 ffmpeg는 glibc 리눅스용으로 빌드돼서 MediaCodec을 지원하지 않아요. Termux의 ffmpeg는 안드로이드용으로 MediaCodec을 켜고 빌드돼 있어요. proot-distro는 컨테이너 안에서도 Termux 폴더와 안드로이드 시스템 폴더(`/system`, `/vendor`, `/apex`, `/linkerconfig`)를 그대로 보여 주고, 그 안의 프로세스도 여전히 Termux 앱으로 실행돼요. 그래서 이 ffmpeg는 Termux에서와 똑같이 제조사의 코덱 라이브러리와 미디어 서비스에 닿을 수 있어요.
-
-`LD_LIBRARY_PATH`에 Termux의 `lib` 폴더가 있으면 제조사의 그래픽 버퍼 매퍼(gralloc)를 불러오지 못해요. 필요한 라이브러리 대신 Termux의 사본을 가져가는 것으로 보여요. 그러면 안드로이드의 libui가 위 메시지를 내며 프로그램을 멈춰요. 같은 메시지가 [termux-x11 #960](https://github.com/termux/termux-x11/issues/960)에도 나와요.
-
-## 측정
-
-`bench.sh`는 1080x1920 테스트 화면 300프레임을 인코딩해요. 테스트 화면도 CPU가 그리기 때문에 모든 줄에 그 작업이 들어 있어요.
-
-| 인코더 | proot-distro Debian 안 | Termux |
-|---|---|---|
-| `h264_mediacodec` (하드웨어) | 59.2 fps, CPU 5.3초 | 84.7 fps, CPU 4.7초 |
-| `hevc_mediacodec` (하드웨어) | 57.7 fps, CPU 5.2초 | 92.4 fps, CPU 3.8초 |
-| `libx264 -preset veryfast` | 39.7 fps, CPU 19.2초 | 56.0 fps, CPU 15.2초 |
-| `libx264 -preset medium` | 33.0 fps, CPU 32.9초 | 35.3 fps, CPU 31.2초 |
-| `LD_LIBRARY_PATH` = Termux lib인 `h264_mediacodec` | gralloc-mapper is missing | gralloc-mapper is missing |
-
-하드웨어 인코더가 더 빠르고 CPU를 거의 쓰지 않아서(x264 veryfast보다 CPU 시간이 4~6배 적음), 화면을 그리는 작업에 CPU를 남겨 줘요. proot는 시스템 호출을 가로채기 때문에 컨테이너 안에서는 전체적으로 조금 느려요.
-
-측정 기기: 삼성 갤럭시 탭 S9 FE+ (엑시노스 1380), Android 16 / One UI 8.5, Termux 0.118.3 (F-Droid), Termux ffmpeg 9.0.2, proot-distro Debian 13. 다른 기기는 아직 시험하지 않았어요. 다른 폰이나 태블릿에서 잰 결과를 이슈로 알려 주시면 반가워요.
+Termux에서:
 
 ```sh
-./bench.sh       # proot-distro 안에서
+pkg install ffmpeg
+```
+
+proot 안에서는 Termux의 ffmpeg를 전체 경로로 실행하거나, 이 저장소의 `ffmpeg-hw`를 씁니다:
+
+```sh
+./ffmpeg-hw -i in.mp4 -c:v h264_mediacodec -b:v 8M -pix_fmt yuv420p out.mp4
+```
+
+`LD_LIBRARY_PATH`가 Termux의 `lib` 폴더를 가리키지만 않으면 이걸로 끝입니다.
+
+## `gralloc-mapper is missing`
+
+`LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib`이면 하드웨어 인코더가 이 메시지를 내고 종료됩니다. proot 안에서도, 그냥 Termux에서도 똑같습니다. proot 안에서 Termux 프로그램을 돌리려고 이 경로를 넣으라는 설치 안내도 있는데, 필요 없습니다. Termux 실행 파일은 자기 RUNPATH로 라이브러리를 찾습니다. `ffmpeg-hw`는 이 변수만 지우고 Termux의 ffmpeg를 실행합니다.
+
+제 추측으로는, 이때 제조사의 gralloc 매퍼가 필요한 라이브러리 대신 Termux의 사본을 잡아서 불러오기에 실패하는 것 같습니다. [termux-x11 #960](https://github.com/termux/termux-x11/issues/960)에도 같은 메시지가 나옵니다.
+
+## 측정값
+
+`bench.sh`는 1080x1920 테스트 화면 300프레임을 인코딩합니다. 테스트 화면 자체도 CPU가 그리기 때문에 모든 줄에 그 작업이 들어 있습니다.
+
+| 인코더 | proot 안 (Debian) | Termux |
+|---|---|---|
+| `h264_mediacodec` | 59.2 fps, CPU 5.3초 | 84.7 fps, CPU 4.7초 |
+| `hevc_mediacodec` | 57.7 fps, CPU 5.2초 | 92.4 fps, CPU 3.8초 |
+| `libx264 -preset veryfast` | 39.7 fps, CPU 19.2초 | 56.0 fps, CPU 15.2초 |
+| `libx264 -preset medium` | 33.0 fps, CPU 32.9초 | 35.3 fps, CPU 31.2초 |
+| `h264_mediacodec`, `LD_LIBRARY_PATH` = Termux lib | gralloc-mapper is missing | gralloc-mapper is missing |
+
+갤럭시 탭 S9 FE+ (엑시노스 1380), Android 16, F-Droid판 Termux 0.118.3, ffmpeg 9.0.2, Debian 13. 가진 기기가 이것 하나라서, 다른 폰에서 잰 결과는 이슈로 알려 주시면 고맙겠습니다.
+
+하드웨어 인코더는 x264 veryfast의 4분의 1에서 3분의 1 정도(medium의 6분의 1)만 CPU를 씁니다. 다른 프로그램이 화면을 그리고 있을 때는 fps보다 이게 더 중요합니다. proot는 시스템 호출을 가로채기 때문에 proot 안에서는 전부 조금씩 느립니다.
+
+```sh
+./bench.sh       # proot 안에서
 bash bench.sh    # Termux에서
 ```
 
-## 팁
+## 참고
 
-- MediaCodec 인코더는 `-crf` 대신 비트레이트(`-b:v 8M`)로 화질을 정해요.
-- `-pix_fmt yuv420p`(또는 `nv12`)로 넘겨 주세요.
-- CPU 대안을 남겨 두세요. 하드웨어 인코더가 실패하면 `libx264 -preset veryfast`로 다시 인코딩하면 돼요.
-- 인코딩이 느린 원인이 아닐 때가 많아요. 이 방법이 나온 쇼츠 제작 과정에서는 Python(MoviePy)으로 프레임을 그리는 단계가 초당 2프레임 정도였어요. 합성을 ffmpeg 필터 그래프 하나(`scale`의 `eval=frame`, `overlay`, `xfade`)로 옮기고 `h264_mediacodec`으로 인코딩하자, 30초 영상 렌더링이 약 7분에서 30~80초로 줄었어요.
+- MediaCodec은 `-crf` 대신 비트레이트(`-b:v`)를 받습니다.
+- 입력은 `yuv420p`나 `nv12`로 넘깁니다.
+- 하드웨어 인코더가 없을 때를 대비해 `libx264 -preset veryfast`를 대안으로 두세요.
+- 제 경우엔 인코딩이 느린 원인도 아니었습니다. MoviePy가 프레임을 초당 2장 정도밖에 못 그렸거든요. 합성을 ffmpeg 필터 그래프 하나로 옮기고 `h264_mediacodec`으로 인코딩했더니 30초 영상이 약 7분에서 30~80초로 줄었습니다.
 
 Python에서:
 
