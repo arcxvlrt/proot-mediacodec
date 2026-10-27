@@ -55,6 +55,7 @@ bash bench.sh    # in Termux
 - Feed it `yuv420p` or `nv12`.
 - Keep `libx264 -preset veryfast` as a fallback for when the hardware encoder isn't there.
 - For me encoding wasn't even the slow part: MoviePy drew frames at about 2 fps. Doing the compositing in a single ffmpeg filter graph and encoding with `h264_mediacodec` took a 30-second video from about 7 minutes to 30-80 seconds.
+- If the video is made of still photos, don't feed them with `-loop 1`: that reads and decodes the file again for every frame. Give each photo as a single frame and repeat it in the filter graph instead (`-framerate 30 -i photo.png` with `format=yuv420p,tpad=stop_mode=clone:stop_duration=6,trim=duration=6`). In my 30-second slideshow the ffmpeg time dropped by about 40% (88 s to 47 s) with the same output. This only helps with stills; video clips have a different picture in every frame anyway. Text that never changes works the same way: draw it into the background image once instead of overlaying it on every frame.
 
 From Python:
 

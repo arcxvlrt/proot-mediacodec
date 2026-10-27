@@ -57,6 +57,7 @@ bash bench.sh    # 在 Termux 里
 - 输入用 `yuv420p` 或 `nv12`。
 - 留着 `libx264 -preset veryfast` 作为备用，以防没有硬件编码器。
 - 对我来说，编码其实并不是最慢的环节：MoviePy 每秒只能画大约 2 帧。把合成改成一个 ffmpeg 滤镜图并用 `h264_mediacodec` 编码后，30 秒的视频从大约 7 分钟缩短到 30～80 秒。
+- 如果视频是用静态照片做的，不要用 `-loop 1` 输入照片：它每一帧都会重新读取并解码文件。应该把照片作为单帧输入，在滤镜图里重复（`-framerate 30 -i photo.png` 加上 `format=yuv420p,tpad=stop_mode=clone:stop_duration=6,trim=duration=6`）。在我的 30 秒照片视频里，输出不变，ffmpeg 时间减少了约 40%（88 秒 → 47 秒）。这只对静态图片有用，视频片段本来每一帧的画面就不同。不变的文字也是同样的道理：与其每帧叠加，不如一次性画进背景图里。
 
 在 Python 中：
 
