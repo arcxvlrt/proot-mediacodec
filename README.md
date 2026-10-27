@@ -1,6 +1,8 @@
 # proot-mediacodec
 
-Hardware video encoding on Android (MediaCodec: `h264_mediacodec`, `hevc_mediacodec`) from a Linux distro running in [proot-distro](https://github.com/termux/proot-distro) on [Termux](https://termux.dev). No root and no custom build: you call Termux's own ffmpeg from inside the container.
+**English** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+
+Hardware video encoding on Android (MediaCodec: `h264_mediacodec`, `hevc_mediacodec`) from a Linux distro running in [proot-distro](https://github.com/termux/proot-distro) on [Termux](https://termux.dev). Nothing to root or build: it is the stock `ffmpeg` package from the Termux repository, called from inside the container.
 
 ## Quick start
 
@@ -67,16 +69,6 @@ for encoder in (["-c:v", "h264_mediacodec", "-b:v", "8M"], ["-c:v", "libx264", "
     if subprocess.run(command, env=env).returncode == 0:
         break
 ```
-
-## 한국어 요약
-
-안드로이드 폰·태블릿의 Termux에서 proot-distro로 띄운 리눅스(Debian 등) 안에서도 기기의 하드웨어 영상 인코더(MediaCodec)를 쓸 수 있어요.
-
-1. Termux에서 `pkg install ffmpeg`
-2. proot 안에서 Termux의 ffmpeg를 전체 경로(`/data/data/com.termux/files/usr/bin/ffmpeg`)로 실행하거나 `ffmpeg-hw`를 쓰고, `-c:v h264_mediacodec -b:v 8M`으로 인코딩
-3. `LD_LIBRARY_PATH`에 Termux의 lib 폴더가 들어 있으면 `gralloc-mapper is missing` 오류로 꺼져요. 이 변수만 빼면 돼요.
-
-갤럭시 탭 S9 FE+에서 하드웨어 인코딩은 x264보다 빠르고 CPU는 4~6배 덜 써요(위 표).
 
 ## License
 
